@@ -28,7 +28,7 @@ var solver = (function createSolver(window)
 	for (z = 0; z < 18; z++)
 	{
 		values.push(Math.exp(Math.log(2) * z));
-		inverse[values[z]] = z;
+		inverse[Math.round(values[z])] = z;
 		weight.push(Math.exp(z * constants[0]));
 		side.push(Math.exp(Math.log(z) * constants[2]) * constants[1]);
 		comparison.push([]);
