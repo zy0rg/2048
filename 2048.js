@@ -1,6 +1,5 @@
-var solver = (function createSolver(window)
-{
-	var field = [],
+function createSolver(window) {
+	var field = new Uint8Array(16),
 		score = 0,
 		lost = false,
 		values = [],
@@ -8,6 +7,7 @@ var solver = (function createSolver(window)
 		comparison = [],
 		weight = [],
 		side = [],
+		workers,
 		z, x,
 		body,
 		bvm, bsm;
@@ -25,15 +25,13 @@ var solver = (function createSolver(window)
 		.875	// base side multiplier
 	];
 
-	for (z = 0; z < 18; z++)
-	{
+	for (z = 0; z < 18; z++) {
 		values.push(Math.exp(Math.log(2) * z));
 		inverse[Math.round(values[z])] = z;
 		weight.push(Math.exp(z * constants[0]));
 		side.push(Math.exp(Math.log(z) * constants[2]) * constants[1]);
 		comparison.push([]);
-		for (x = 0; x < 18; x++)
-		{
+		for (x = 0; x < 18; x++) {
 			comparison[z].push(compare(z, x));
 		}
 	}
@@ -41,29 +39,21 @@ var solver = (function createSolver(window)
 	bvm = constants[8];
 	bsm = constants[9];
 
-	function compare(current, neighbor)
-	{
-		if (current == neighbor)
-		{
+	function compare(current, neighbor) {
+		if (current === neighbor) {
 			return constants[3];
-		}
-		else if (current < neighbor)
-		{
+		} else if (current < neighbor) {
 			return constants[4] / (neighbor + constants[5]) * (current + constants[6]);
-		}
-		else
-		{
+		} else {
 			return constants[7];
 		}
 	}
 
-	function output(data)
-	{
+	function output(data) {
 		body.innerHTML = data;
 	}
 
-	function log()
-	{
+	function log() {
 		console.log(values[field[0]], values[field[1]], values[field[2]], values[field[3]]);
 		console.log(values[field[4]], values[field[5]], values[field[6]], values[field[7]]);
 		console.log(values[field[8]], values[field[9]], values[field[10]], values[field[11]]);
@@ -71,56 +61,48 @@ var solver = (function createSolver(window)
 		console.log('--' + (lost ? ' lost ' : '------' ) + '--', score, evaluate(field));
 	}
 
-	function start()
-	{
+	function start() {
 		var i;
-		for (i = 0; i < 16; i++)
-		{
+		for (i = 0; i < 16; i++) {
 			field[i] = 0;
 		}
-//		field = [
-//			2048, 1024, 32, 2,
-//			2, 32, 64, 8,
-//			4, 4, 0, 0,
-//			2, 8, 0, 2
-//		];
-		add();
-		add();
+		add(field);
+		add(field);
 		lost = false;
 		score = 0;
-//		log();
 	}
 
-	function lose()
-	{
+	function lose() {
 		lost = true;
 	}
 
-	function add()
-	{
+	function add(field) {
 		var free = findFreeCells(field);
 
-		if (free.length)
-		{
+		if (free.length) {
 			field[free[Math.floor(Math.random() * free.length)]] = Math.random() < 0.9 ? 1 : 2;
-		}
-		else
-		{
+		} else {
 			lose();
 		}
 	}
 
-	function findFreeCells(field)
-	{
+	function findFreeCells(field) {
 		var i, free = [];
-		for (i = 0; i < 16; i++)
-		{
-			if (!field[i])
-			{
+		for (i = 0; i < 16; i++) {
+			if (!field[i]) {
 				free.push(i);
 			}
 		}
 		return free;
+	}
+
+	function equal(field1, field2) {
+		for (var i = 0; i < 16; i++) {
+			if (field1[i] != field2[i]) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/**
@@ -131,233 +113,157 @@ var solver = (function createSolver(window)
 	 * @param {Array} field
 	 * @param {Number} direction
 	 */
-	function move(field, direction)
-	{
-		var i, points = 0, state = field.join();
-		switch (direction)
-		{
+	function move(field, direction) {
+		var i, points = 0, state = field.slice();
+		switch (direction) {
 			case 0:
-				for (i = 0; i < 16; i += 4)
-				{
+				for (i = 0; i < 16; i += 4) {
 					points += merge(field, [i, i + 1, i + 2, i + 3]);
 				}
 				break;
 			case 1:
-				for (i = 0; i < 4; i++)
-				{
+				for (i = 0; i < 4; i++) {
 					points += merge(field, [i, i + 4, i + 8, i + 12]);
 				}
 				break;
 			case 2:
-				for (i = 0; i < 16; i += 4)
-				{
+				for (i = 0; i < 16; i += 4) {
 					points += merge(field, [i + 3, i + 2, i + 1, i]);
 				}
 				break;
 			case 3:
-				for (i = 0; i < 4; i++)
-				{
+				for (i = 0; i < 4; i++) {
 					points += merge(field, [i + 12, i + 8, i + 4, i]);
 				}
 				break;
 		}
-		if (state == field.join())
-		{
+		if (equal(field, state)) {
 			throw 'invalid move';
 		}
 		return points;
 	}
 
-	function merge(field, line)
-	{
-		var i = 0,
-//			j = 0,
+	function merge(field, line) {
+		var i,
 			current = 0,
 			points = 0,
 			value, result = [];
-		for (i = 0; i < 4; i++)
-		{
-			if (value = field[line[i]])
-			{
-				if (current)
-				{
-					if (current == value)
-					{
+		for (i = 0; i < 4; i++) {
+			if (value = field[line[i]]) {
+				if (current) {
+					if (current === value) {
 						points += values[++current];
 						result.push(current);
 						current = 0;
-					}
-					else
-					{
+					} else {
 						result.push(current);
 						current = value;
 					}
-				}
-				else
-				{
+				} else {
 					current = value;
 				}
 			}
 		}
 		result.push(current);
-		for (i = 0; i < 4; i++)
-		{
+		for (i = 0; i < 4; i++) {
 			field[line[i]] = result[i] || 0;
 		}
 		return points;
 	}
 
-	function findBestMove(field, depth, hash)
-	{
+	function findBestMove(field, depth, cache) {
 		var currentScore,
 			score = 0,
 			direction,
 			i,
 			id = field.join(),
-//			children = {},
 			tmpField;
 
-		if (!hash)
-		{
-			hash = {
-				best: [],
-				worst: []
-			};
-			for (i = 0; i <= depth; i++)
-			{
-				hash.best.push({});
-				hash.worst.push({});
-			}
-		}
-		else if (i = hash.best[depth][id])
-		{
+		if (i = cache.best[depth][id]) {
 			return i;
 		}
 
-		for (i = 0; i < 4; i++)
-		{
+		for (i = 0; i < 4; i++) {
 			tmpField = field.slice();
-			try
-			{
+			try {
 				move(tmpField, i);
-			}
-			catch (error)
-			{
-//				children[i] = 'invalid';
+			} catch (error) {
 				continue;
 			}
-			if (depth)
-			{
-//				children[i] = findWorstCase(tmpField, depth - 1);
-				currentScore = findWorstCase(tmpField, depth - 1, hash);
-			}
-			else
-			{
-//				children[i] =
-				currentScore = evaluate(tmpField);
-			}
-			if (currentScore >= score)
-			{
+			currentScore = findWorstCase(tmpField, depth - 1, cache);
+			if (currentScore >= score) {
 				score = currentScore;
 				direction = i;
 			}
 		}
-		return hash.best[depth][id] = {
-//			children: children,
+
+		return cache.best[depth][id] = {
 			direction: direction,
 			score: score
 		};
 	}
 
-	function findWorstCase(field, depth, hash)
-	{
-		var move,
-			sum = 0,
-			i,
+	function findWorstCase(field, depth, cache) {
+		var i,
+			pos,
 			id = field.join(),
-//			children = {},
-			free;
+			free,
+			result;
 
-		if (i = hash.worst[depth][id])
-		{
+		if (i = cache.worst[depth][id]) {
 			return i;
 		}
 
-		free = findFreeCells(field);
-		if (free.length)
-		{
-			for (i = 0; i < free.length; i++)
-			{
-				field[free[i]] = 1;
-//				move = findBestMove(field, depth, hash);
-//				children[free[i] + ' 2'] = move;
-				sum += findBestMove(field, depth, hash).score * 0.9;
-				field[free[i]] = 2;
-//				move = findBestMove(field, depth, hash);
-//				children[free[i] + ' 4'] = move;
-				sum += findBestMove(field, depth, hash).score * 0.1;
-				field[free[i]] = 0;
+		if (depth === 0) {
+			result = evaluate(field);
+		} else {
+			result = 0;
+			free = findFreeCells(field);
+			if (free.length) {
+				for (i = 0; i < free.length; i++) {
+					pos = free[i];
+					field[pos] = 1;
+					result += findBestMove(field, depth, cache).score * 9;
+					field[pos] = 2;
+					result += findBestMove(field, depth, cache).score;
+					field[pos] = 0;
+				}
+				result /= free.length * 10;
 			}
-			return hash.worst[depth][id] = sum / free.length;
-//			{
-//				children: children,
-//				score: sum * sum
-//			};
 		}
-		else
-		{
-			return hash.worst[depth][id] = 0;
-//			{
-//				children: 'invalid',
-//				score: 0
-//			};
-		}
+
+		return cache.worst[depth][id] = result;
 	}
 
-	function evaluate(field)
-	{
+	function evaluate(field) {
 		var value = 0,
 			current, vm, sm, cmp,
 			i, x, y;
-		for (i = 0; i < 16; i++)
-		{
-			if (current = field[i])
-			{
+		for (i = 0; i < 16; i++) {
+			if (current = field[i]) {
 				vm = bvm;
 				sm = bsm;
 				cmp = comparison[current];
 				x = i % 4;
 				y = Math.floor(i / 4);
-				if (x == 0)
-				{
+				if (x === 0) {
 					sm += side[current];
-				}
-				else
-				{
+				} else {
 					vm += cmp[field[i - 1]];
 				}
-				if (x == 3)
-				{
+				if (x === 3) {
 					sm += side[current];
-				}
-				else
-				{
+				} else {
 					vm += cmp[field[i + 1]];
 				}
-				if (y == 0)
-				{
+				if (y === 0) {
 					sm += side[current];
-				}
-				else
-				{
+				} else {
 					vm += cmp[field[i - 4]];
 				}
-				if (y == 3)
-				{
+				if (y === 3) {
 					sm += side[current];
-				}
-				else
-				{
+				} else {
 					vm += cmp[field[i + 4]];
 				}
 				value += weight[current] * vm * sm;
@@ -370,190 +276,232 @@ var solver = (function createSolver(window)
 		moves,
 		time;
 
-	function keydown(event)
-	{
+	function keydown(event) {
 		var key = event.which;
-		if (key == 32 || key == 13)
-		{
+		if (key === 32 || key === 13) {
 			start();
-		}
-		else if (key > 36 && key < 41 && !lost)
-		{
+		} else if (key > 36 && key < 41 && !lost) {
 			score += move(field, key - 37);
-			add();
+			add(field);
 			log();
-		}
-		else if (key == 77)
-		{
+		} else if (key === 77) {
 			var result = findBestMove(field);
 			console.log(result);
 			score += move(field, result.direction);
-			add();
+			add(field);
 			log();
-		}
-		else if (key == 78)
-		{
-			if (timeout)
-			{
+		} else if (key === 78) {
+			if (timeout) {
 				clearTimeout(timeout);
 				timeout = null;
-			}
-			else
-			{
+			} else {
 				time = new Date().getTime();
 				moves = 0;
-				iterate(function ()
-				{
+				iterate(3, function () {
 					console.log('score: ' + score);
 				});
 			}
-		}
-		else if (key == 79)
-		{
-			if (timeout)
-			{
+		} else if (key === 79) {
+			if (timeout) {
 				clearTimeout(timeout);
 				timeout = null;
-			}
-			else
-			{
+			} else {
 				evaluateConstants();
 			}
 		}
 	}
 
+	function iterate(depth, callback) {
+		var cache = createCache(depth);
 
-	function iterate(callback)
-	{
-		try
-		{
-			score += move(field, findBestMove(field, 1).direction);
-		}
-		catch (e)
-		{
-			if (callback)
-			{
+		try {
+			score += move(field, findBestMove(field, depth, cache).direction);
+		} catch (e) {
+			if (callback) {
 				callback(e);
 				return;
-			}
-			else
-			{
+			} else {
 				throw e;
 			}
 		}
-		add();
-//		log();
+		add(field);
 		moves++;
-		if (moves % 500 == 0)
-		{
+		if (moves % 500 === 0) {
 			console.log(moves, ((new Date().getTime() - time) / 500));
 			time = new Date().getTime();
 		}
 //		console.log('average time: ', (new Date().getTime() - time) / moves);
-		if (!lost)
-		{
-			setTimeout(iterate, 0, callback);
+		if (!lost) {
+			setTimeout(iterate, 0, depth, callback);
 		}
 	}
 
-	function evaluateConstants()
-	{
+	function evaluateConstants() {
 		var results = [];
 
-		(function startNew()
-		{
+		(function startNew() {
 			start();
-			if (results.length < 150)
-			{
-				iterate(function ()
-				{
+			if (results.length < 150) {
+				iterate(3, function () {
 					console.log(results.length, score);
 					results.push(score);
 					startNew();
 				});
-			}
-			else
-			{
-				results.sort(function (a, b)
-				{
+			} else {
+				results.sort(function (a, b) {
 					return a - b;
 				});
 				console.log(constants);
 				console.log(results);
-				console.log("Max: " + Math.max.apply(Math, results), ", Min: " + Math.min.apply(Math, results), ", Median: " + results[Math.floor(results.length / 2)], ", Average: " + Math.floor(results.reduce(function (a, b)
-				{
-					return a + b
-				}) / results.length));
+				console.log("Max: " + Math.max.apply(Math, results), ", Min: " + Math.min.apply(Math, results), ", Median: " + results[Math.floor(results.length / 2)], ", Average: " + Math.floor(results.reduce(function (a, b) {
+							return a + b
+						}) / results.length));
 			}
 		})();
 	}
 
+	function createCache(depth) {
+		var i,
+			cache = {
+				best: [],
+				worst: []
+			};
 
-	findBestMove.inverse = inverse;
-	findBestMove.values = values;
-	findBestMove.evaluate = evaluate;
-	findBestMove.start = function ()
-	{
+		for (i = 0; i <= depth; i++) {
+			cache.best.push({});
+			cache.worst.push({});
+		}
+
+		return cache;
+	}
+
+	function calculate(field, depth) {
+		var promises = [],
+			i,
+			tmpField;
+
+		if (workers == null) {
+			workers = [createWorker(), createWorker(), createWorker(), createWorker()];
+		}
+
+		for (i = 0; i < 4; i++) {
+			tmpField = field.slice();
+			try {
+				move(tmpField, i);
+				promises[i] = workers[i](tmpField, depth - 1);
+			} catch (error) {
+				promises[i] = -1;
+			}
+		}
+
+		return Promise.all(promises).then(function (results) {
+			var i,
+				direction,
+				score = 0,
+				currentScore;
+
+			for (i = 0; i < 4; i++) {
+				currentScore = results[i];
+				if (currentScore >= score) {
+					score = currentScore;
+					direction = i;
+				}
+			}
+
+			return {
+				direction: direction,
+				score: score
+			};
+		});
+	}
+
+	calculate.inverse = inverse;
+	calculate.values = values;
+	calculate.evaluate = evaluate;
+	calculate.start = function () {
 		body = document.getElementsByTagName('body')[0];
 		window.addEventListener('keydown', keydown);
 	};
 
-	return findBestMove;
-})(window);
+	this.onmessage = function (message) {
+		var data = message.data;
+		if (data.operation === 'findBestMove') {
+			this.postMessage({
+				operation: 'findBestMove',
+				result: findBestMove(data.field, data.depth, createCache(data.depth))
+			});
+		} else if (data.operation === 'findWorstCase') {
+			this.postMessage({
+				operation: 'findWorstCase',
+				result: findWorstCase(data.field, data.depth, createCache(data.depth))
+			});
+		}
+	};
 
-if (typeof GameManager != "undefined")
-{
-	(function (GameManager)
-	{
+	return calculate;
+}
+
+function createWorker() {
+	var url = URL.createObjectURL(new Blob(['(' + createSolver.toString() + ')()'], {type: 'application/javascript'})),
+		worker = new Worker(url),
+		handler;
+
+	worker.onmessage = function (message) {
+		handler(message.data.result);
+	};
+
+	return function (field, depth) {
+		return new Promise(function (resolve) {
+			handler = resolve;
+			worker.postMessage({operation: 'findWorstCase', field: field, depth: depth});
+		});
+	};
+}
+
+var solver = createSolver(window);
+
+if (typeof GameManager !== "undefined") {
+	(function (GameManager) {
 		var initialSetup = GameManager.prototype.setup,
 			timeout;
 
-		function parseCells(cells)
-		{
-			var field = [],
+		function parseCells(cells) {
+			var field = new Uint8Array(16),
 				cell,
-				i, j;
-			for (i = 0; i < 4; i++)
-			{
-				for (j = 0; j < 4; j++)
-				{
-					cell = cells[j][i];
-					field.push(cell ? solver.inverse[cell.value] : 0);
+				x, y,
+				i = 0;
+			for (x = 0; x < 4; x++) {
+				for (y = 0; y < 4; y++) {
+					cell = cells[y][x];
+					field[i++] = cell ? solver.inverse[cell.value] : 0;
 				}
 			}
 			return field;
 		}
 
-
-		GameManager.prototype.setup = function ()
-		{
+		GameManager.prototype.setup = function () {
 			var result = initialSetup.apply(this),
 				game = this;
-			if (timeout)
-			{
+			if (timeout) {
 				clearTimeout(timeout);
 			}
-			function move()
-			{
-				var direction = solver(parseCells(game.grid.cells), 3).direction;
-				game.move((direction + 3) % 4);
+			function move() {
+				solver(parseCells(game.grid.cells), 5).then(function (result) {
+					game.move((result.direction + 3) % 4);
 
-				if (game.isGameTerminated())
-				{
-					if (game.over)
-					{
-						return;
+					if (game.isGameTerminated()) {
+						if (game.over) {
+							return;
+						} else if (game.won) {
+							game.keepPlaying = true;
+							window.requestAnimationFrame(function () {
+								game.actuator.continueGame();
+							});
+						}
 					}
-					else if (game.won)
-					{
-						game.keepPlaying = true;
-						window.requestAnimationFrame(function ()
-						{
-							game.actuator.continueGame();
-						});
-					}
-				}
-				setTimeout(move, 20);
+
+					move();
+				});
 			}
 
 			setTimeout(move, 20);
@@ -562,196 +510,8 @@ if (typeof GameManager != "undefined")
 		};
 
 	})(GameManager);
-}
-else
-{
-	window.onload = function ()
-	{
+} else {
+	window.onload = function () {
 		solver.start();
 	}
 }
-
-// [1.15, 0.04, 0.8, 0.3, 0.4, 2, 2, 0, 1, 1]
-// [22456, 25588, 27600, 31452, 31756, 32572, 34808, 34920, 35052, 36200, 36228, 36424, 51460, 59452, 60624, 60660, 60808, 60952, 61092, 61300, 61364, 71740, 75292, 76484, 77036, 79120, 79564, 79756, 123468, 124712]
-// Max: 124712 , Min: 22456 , Median: 60660 , Average: 56998
-
-// [1.15, 0.04, 0.8, 0.3, 0.4, 2, 2, 0, 0.8, 0.8]
-// [27156, 27464, 28020, 31536, 32100, 32432, 34352, 34520, 34820, 35116, 36148, 36272, 36888, 37112, 51280, 51352, 51532, 57352, 58300, 61196, 61344, 68000, 71536, 71696, 72176, 73824, 76284, 80532, 81240, 84600]
-// Max: 84600 , Min: 27156 , Median: 51352 , Average: 51206
-
-// [1.15, 0.04, 0.8, 0.3, 0.4, 2, 2, 0, 0.9, 0.9]
-// [26764, 27528, 31580, 32076, 34760, 36284, 36648, 36988, 37452, 49620, 51664, 55720, 56584, 58612, 59648, 60656, 67236, 67532, 71340, 73184, 73276, 76260, 76572, 78748, 78788, 79852, 80736, 104460, 115152, 122752]
-// Max: 122752 , Min: 26764 , Median: 60656 , Average: 61949
-
-// [1.175, 0.0375, 0.8, 0.3, 0.4, 2, 2, 0, 0.9, 0.9]
-// [21488, 25772, 27824, 31396, 34504, 35256, 35388, 35700, 36688, 36976, 40828, 48984, 49680, 51636, 56576, 56788, 58912, 59068, 60348, 60492, 68188, 70660, 70760, 71752, 77264, 78736, 80556, 82252, 82716, 124780]
-// Max: 124780 , Min: 21488 , Median: 56788 , Average: 55732
-
-// [1.15, 0.045, 0.75, 0.3, 0.4, 2, 2, 0, 1, 1]
-// [16084, 16488, 16872, 30620, 31412, 31492, 31944, 32436, 35688, 35984, 36496, 36568, 36828, 36980, 37008, 51484, 55556, 55584, 56456, 56680, 57904, 60400, 60580, 60672, 71048, 72168, 79704, 79796, 123032, 129800]
-// Max: 129800 , Min: 16084 , Median: 51484 , Average: 51125
-
-// [1.15, 0.045, 0.75, 0.3, 0.4, 2, 2, 0, 0.9, 0.9]
-// [3440, 14640, 26800, 27456, 34772, 36060, 36228, 36328, 37036, 37084, 37388, 49920, 49932, 51180, 56152, 56628, 58876, 60352, 70856, 71108, 71148, 73716, 76528, 78272, 80620, 110784, 111832, 132948, 143672, 155556]
-// Max: 155556 , Min: 3440 , Median: 56628 , Average: 62910
-
-// [1.15, 0.04, 0.8, 0.3, 0.4, 2, 2, 0, 0.85, 0.85]
-// [32100, 34716, 35864, 36216, 36412, 37568, 38576, 47396, 51168, 51348, 57212, 60000, 60492, 60588, 61216, 61388, 61420, 69084, 71656, 72240, 73592, 75740, 77084, 77500, 79936, 80408, 80492, 80496, 80524, 122740]
-// Max: 122740 , Min: 32100 , Median: 61388 , Average: 62172
-
-// [1.15, 0.04, 0.8, 0.3, 0.4, 2, 2, -0.1, 0.9, 0.9]
-// [23152, 26980, 27516, 27668, 31608, 32532, 35264, 35700, 36004, 36296, 36796, 57024, 57324, 58440, 59088, 59824, 60228, 61044, 61088, 61288, 62208, 71564, 76524, 76576, 76652, 77256, 80400, 102360, 103472, 132252]
-// Max: 132252 , Min: 23152 , Median: 59824 , Average: 58137
-
-// [1.15, 0.04, 0.8, 0.3, 0.4, 2, 2, 0, 0.87, 0.87]
-// [16644, 27044, 27372, 27952, 32248, 33320, 33892, 36280, 36872, 36964, 58764, 58944, 59620, 60052, 60300, 60308, 68068, 68112, 71808, 74852, 76492, 76584, 76732, 77244, 80424, 80536, 109436, 112412, 122800, 153552]
-// Max: 153552 , Min: 16644 , Median: 60308 , Average: 63854
-
-// [1.15, 0.04, 0.8, 0.3, 0.4, 2, 2, 0, 0.88, 0.88, 2]
-// [6696, 32948, 34516, 36464, 36680, 37180, 37256, 55788, 56204, 56872, 57188, 59160, 60360, 60448, 60672, 60736, 61104, 61252, 70424, 70708, 70724, 70788, 71624, 72096, 72184, 76020, 76548, 80608, 113732, 124504]
-// Max: 124504 , Min: 6696 , Median: 60736 , Average: 61382
-
-// [1.15, 0.04, 0.8, 0.3, 0.4, 3, 3, 0, 0.9, 0.9]
-// [14468, 25196, 30436, 34856, 36156, 36304, 36624, 36728, 37180, 51424, 53632, 59376, 60432, 60796, 61064, 69952, 71164, 71444, 71768, 71868, 75064, 77036, 77612, 78716, 79556, 82088, 107676, 111136, 112192, 125652]
-// Max: 125652 , Min: 14468 , Median: 69952 , Average: 63919
-
-// [1.15, 0.04, 0.8, 0.3, 0.4, 2, 2, 0, 0.9, 0.9, 2]
-// [34152, 35776, 36232, 36232, 36240, 36392, 36528, 48196, 51696, 56664, 58780, 60460, 60480, 68148, 70120, 71172, 71340, 71848, 72496, 76112, 76840, 79312, 79464, 79768, 80508, 80540, 86048, 111176, 133248, 152496]
-// Max: 152496 , Min: 34152 , Median: 71172 , Average: 68282
-
-// [1.15, 0.04, 0.8, 0.3, 0.45, 3, 3, 0, 0.875, 0.875, 2]
-// [16384, 28724, 32636, 34640, 35624, 36208, 36544, 36636, 36804, 37108, 54516, 57420, 58132, 59384, 60088, 60360, 61008, 67512, 74948, 76756, 78236, 79136, 79668, 79844, 80708, 81804, 82216, 112572, 113604, 119992]
-// Max: 119992 , Min: 16384 , Median: 60360 , Average: 62307
-
-// [1.15, 0.04, 0.8, 0.3, 0.4, 3, 3, 0, 0.875, 0.875, 2]
-// [16148, 26792, 33776, 34916, 36408, 37052, 37120, 59400, 59944, 61332, 67252, 67540, 68300, 70088, 70752, 72056, 72188, 73484, 76480, 76496, 77312, 79176, 79288, 80004, 80884, 82256, 119992, 130080, 131712, 144476]
-// Max: 144476 , Min: 16148 , Median: 72056 , Average: 70756
-
-// [1.15, 0.04, 0.8, 0.3, 0.4, 3, 3, 0, 0.875, 1, 2]
-// [6340, 23076, 24896, 25488, 30932, 31692, 33712, 36056, 36096, 36508, 36924, 51520, 52000, 52180, 52380, 58956, 59340, 60592, 60800, 60940, 60944, 61232, 67736, 76804, 79828, 80528, 119616, 125004, 149308, 155920]
-// Max: 155920 , Min: 6340 , Median: 58956 , Average: 60244
-
-// [1.15, 0.04, 0.8, 0.3, 0.4, 3, 3, 0, 1, 0.875, 2]
-// [25860, 30768, 32244, 32944, 34912, 36376, 36436, 51584, 54804, 58664, 58916, 60200, 60432, 65304, 67176, 70160, 71756, 75708, 76504, 76564, 76688, 76912, 78064, 81292, 82548, 124740, 128516, 131972, 132388, 134520]
-// Max: 134520 , Min: 25860 , Median: 70160 , Average: 70831
-
-// [1.15, 0.04, 0.8, 0.3, 0.4, 3, 3, 0, 1, 0.8, 2]
-// [16096, 31804, 32316, 32920, 34504, 34516, 34796, 35956, 51728, 55392, 55468, 56540, 60132, 60372, 60560, 60952, 67964, 68540, 69828, 70284, 71588, 73068, 74600, 74800, 74824, 78664, 78708, 80156, 110036, 113428]
-// Max: 113428 , Min: 16096 , Median: 60952 , Average: 60684
-
-// [1.15, 0.04, 0.8, 0.3, 0.4, 3, 4, 0, 1, 0.875, 2]
-// [16216, 27192, 31444, 32332, 32468, 32532, 34436, 35020, 49300, 49672, 51348, 55904, 57920, 60556, 60584, 60760, 61256, 66844, 70940, 71148, 71292, 72084, 72156, 75216, 77400, 78768, 78792, 79756, 80564, 112300]
-// Max: 112300 , Min: 16216 , Median: 60760 , Average: 58540
-
-// [1.15, 0.04, 0.8, 0.3, 0.4, 4, 3, 0, 1, 0.875, 2]
-// [16424, 27780, 33080, 35052, 35092, 36336, 36484, 37120, 37920, 38096, 50400, 50732, 56300, 56480, 56516, 59692, 60152, 69936, 72448, 77112, 79252, 79768, 79772, 80452, 82408, 108328, 112252, 120124, 124020, 128100]
-// Max: 128100 , Min: 16424 , Median: 59692 , Average: 64587
-
-// [1.15, 0.04, 0.8, 0.3, 0.4, 4, 4, 0, 1, 0.875, 2]
-// [23576, 27040, 27860, 32280, 32324, 32948, 35400, 35448, 35772, 36580, 37056, 47496, 47960, 49264, 51480, 51480, 51656, 55108, 58220, 58640, 67864, 68948, 70016, 70836, 72308, 78904, 80708, 82164, 112612, 157116]
-// Max: 157116 , Min: 23576 , Median: 51480 , Average: 56302
-
-// [1.15, 0.04, 0.8, 0.3, 0.4, 3, 3, 0, 0.95, 0.875, 2]
-// [27216, 31804, 32664, 35120, 36020, 36196, 37052, 51696, 52360, 54688, 57016, 59748, 59908, 65244, 69776, 70136, 70932, 75068, 76672, 77300, 77592, 78116, 78832, 79236, 80148, 80632, 109000, 112348, 122276, 132452]
-// Max: 132452 , Min: 27216 , Median: 70136 , Average: 67574
-
-// [1.15, 0.04, 0.8, 0.3, 0.4, 3, 3, 0, 0.875, 0.875, 2, 3]
-// [27184, 31204, 35752, 36180, 36636, 59608, 60520, 60624, 60784, 60848, 62532, 67592, 68292, 71124, 71576, 71576, 76936, 77124, 77268, 77364, 78140, 80224, 81208, 112340, 113148, 114744, 124912, 129500, 132048, 155476]
-// Max: 155476 , Min: 27184 , Median: 71576 , Average: 77082
-
-// [1.15, 0.04, 0.8, 0.3, 0.4, 3, 3, 0, 0.95, 0.875, 3]
-// Max: 166668 , Min: 12500 , Median: 60708 , Average: 61956
-
-// [1.15, 0.04, 0.8, 0.3, 0.4, 3, 3, 0, 0.95, 0.875, 2]
-// Max: 169856 , Min: 6868 , Median: 60116 , Average: 60814
-
-// [1.15, 0.04, 0.8, 0.3, 0.4, 3, 3, 0, 0.95, 0.875, 1]
-// Max: 176560 , Min: 7268 , Median: 60676 , Average: 61915
-
-// [1.15, 0.04, 0.8, 0.3, 0.4, 0, 0, 0, 1, 0.9]
-// [15524, 15920, 16380, 16480, 16540, 27052, 34920, 35836, 35948, 36348, 36868, 36996, 37120, 38284, 49368, 51336, 51448, 56216, 56500, 56576, 56752, 57016, 57752, 58976, 59468, 60192, 60460, 60472, 60496, 61160, 62152, 70524, 71080, 71656, 72300, 72444, 77204, 78352, 79076, 79776, 79936, 80588, 80864, 81132, 119084, 120812, 123508, 123732, 124940, 132752]
-// Max: 132752 , Min: 15524 , Median: 60192 , Average: 62326
-
-// [1.15, 0.04, 0.8, 0.3, 0.4, 2, 2, 0, 1, 0.9]
-// [13084, 23396, 26968, 27564, 30644, 31356, 31876, 32356, 34436, 35480, 36184, 36284, 36412, 36412, 36680, 36768, 36916, 37036, 46872, 50696, 51380, 52204, 56400, 58744, 59304, 59800, 60944, 60992, 61080, 62772, 67756, 69724, 71544, 71680, 71924, 72248, 75360, 76836, 77188, 77260, 78536, 78792, 80300, 80312, 80540, 112924, 132044, 132696, 132720, 148228]
-// Max: 148228 , Min: 13084 , Median: 59800 , Average: 60993
-
-// [1.15, 0.04, 0.8, 0.3, 0.4, 5, 5, 0, 1, 0.9]
-// [15560, 16344, 26604, 26776, 32108, 32524, 34456, 34648, 34752, 36244, 36260, 36308, 36644, 36840, 36976, 37048, 47380, 50976, 51424, 51448, 51700, 52428, 56764, 58752, 59720, 59988, 60412, 65684, 68476, 71188, 73232, 75660, 75840, 76424, 76460, 76484, 78868, 79236, 79912, 80280, 80412, 80588, 87064, 111008, 113212, 120304, 121660, 129112, 129220, 148008]
-// Max: 148008 , Min: 15560 , Median: 59988 , Average: 64188
-
-// [1.15, 0.04, 0.8, 0.3, 0.4, 4, 5, 0, 1, 0.8]
-// [15504, 16536, 16840, 26584, 27460, 32700, 33328, 35476, 35480, 36096, 36252, 36268, 36272, 36608, 36688, 36728, 36912, 36980, 37224, 48096, 51688, 51740, 56492, 56760, 56800, 58484, 59472, 60332, 60728, 60932, 61164, 61616, 68508, 72180, 72236, 74364, 74760, 77336, 77384, 77420, 79720, 80500, 80516, 80800, 84212, 84556, 114796, 120424, 122496, 131756]
-// Max: 131756 , Min: 15504 , Median: 58484 , Average: 58484
-
-// [1.15, 0.04, 0.8, 0.3, 0.4, 2, 3, 0, 1, 0.8]
-// [16392, 16528, 17272, 32028, 32840, 32888, 34760, 34940, 35404, 35928, 36176, 36440, 36828, 37020, 38012, 46736, 49736, 51100, 51540, 55040, 56616, 58664, 58768, 60444, 61172, 61388, 63652, 70076, 71016, 71668, 72316, 73096, 73500, 76596, 77268, 78412, 79036, 79552, 79840, 80412, 80812, 81408, 81740, 103916, 120240, 122492, 123892, 129572, 132844, 143536]
-// Max: 143536 , Min: 16392 , Median: 61388 , Average: 65031
-
-// [1.15, 0.04, 0.8, 0.3, 0.4, 3, 3, 0, 1, 0.8]
-// [16392, 16768, 27456, 33956, 34984, 35920, 36176, 36540, 37036, 37140, 37948, 38276, 47556, 49524, 56668, 57616, 58872, 59704, 59784, 60284, 60808, 60912, 61148, 61292, 61324, 62200, 62536, 64272, 65972, 67468, 68980, 69800, 70640, 71484, 72672, 73364, 76520, 77664, 78884, 79164, 79772, 80516, 80576, 80608, 104372, 112328, 112860, 129120, 130784, 132784]
-// Max: 132784 , Min: 16392 , Median: 62200 , Average: 64988
-
-// [1.075, 0.04, 0.8, 0.3, 0.4, 2.5, 3, 0, 0.95, 0.875]
-// [16508, 16556, 16576, 16760, 24896, 26132, 26972, 27252, 27284, 29016, 32352, 32400, 34228, 34376, 34440, 34912, 36092, 36184, 36440, 36512, 36940, 38024, 49288, 55676, 59304, 59364, 59736, 59828, 60656, 61768, 62400, 68100, 70576, 70800, 71528, 71580, 75916, 76488, 76684, 77068, 80036, 80124, 80164, 80272, 80276, 80404, 80880, 82144, 108968, 109244]
-// Max: 109244 , Min: 16508 , Median: 59364 , Average: 54002
-
-// [1.15, 0.04, 0.8, 0.3, 0.4, 2.5, 3, 0, 0.95, 0.875]
-// [7220, 7472, 13564, 15756, 16372, 25352, 32680, 35408, 35688, 35824, 35888, 35928, 36028, 36088, 36248, 36316, 36404, 36724, 36972, 37312, 47820, 55896, 56452, 56560, 56648, 60152, 60908, 61228, 65800, 66728, 66764, 67780, 72072, 72224, 78360, 78728, 79680, 80508, 80516, 80732, 107324, 111416, 113840, 124028, 127528, 130120, 131120, 132948, 145772, 153524]
-// Max: 153524 , Min: 7220 , Median: 60152 , Average: 64248
-
-// [1.275, 0.04, 0.8, 0.3, 0.4, 2.5, 3, 0, 0.95, 0.875]
-// [7132, 14324, 14524, 15344, 16428, 26760, 26916, 32272, 32620, 33048, 34456, 35816, 36580, 36580, 36900, 37100, 37972, 38600, 51456, 53940, 55020, 56820, 58776, 60408, 60448, 60536, 61216, 61388, 67992, 68076, 71452, 72184, 72240, 73324, 74796, 77844, 78380, 78856, 79736, 79884, 80596, 80760, 81552, 108332, 109292, 122984, 123948, 133872, 134376, 173144]
-// Max: 173144 , Min: 7132 , Median: 60536 , Average: 62740
-
-// [1.15, 0.04, 0.8, 0.3, 0.4, 3, 3, 0, 1, 0.75]
-// [15412, 16600, 26864, 27580, 28152, 29420, 32704, 33064, 34392, 35596, 36260, 36388, 36596, 36616, 36636, 36848, 36976, 37116, 37216, 37288, 38132, 40364, 55472, 55592, 56184, 56840, 58748, 59680, 60548, 60728, 61240, 65856, 70952, 72004, 74824, 76544, 77060, 77292, 77360, 77532, 77540, 79752, 79872, 80572, 80888, 100264, 112896, 131248, 158164, 164680]
-// Max: 164680 , Min: 15412 , Median: 56840 , Average: 59731
-
-// [1.175, 0.04, 0.8, 0.3, 0.4, 4, 5, 0, 1, 0.8]
-// [16136, 25072, 26496, 27540, 35492, 35556, 35604, 35628, 35780, 35992, 36144, 36192, 36204, 36292, 36800, 36844, 50868, 55008, 56324, 58132, 59100, 59744, 60380, 61216, 61260, 67168, 67720, 70136, 70500, 71192, 71200, 71576, 71596, 71836, 72524, 74760, 76588, 76920, 77452, 78540, 78744, 79620, 79760, 79840, 79932, 80240, 80444, 80468, 112740, 125088]
-// Max: 125088 , Min: 16136 , Median: 67168 , Average: 60327
-
-// [1.175, 0.04, 0.8, 0.3, 0.4, 4, 4.5, 0, 1, 0.8]
-// [16212, 16792, 23228, 27984, 28344, 32272, 32616, 33792, 34968, 35940, 36112, 36260, 36800, 36884, 51728, 54828, 56300, 56500, 56860, 58612, 60056, 60376, 60380, 60580, 60704, 60840, 61272, 61332, 62064, 67424, 69840, 70464, 71772, 71956, 72324, 72392, 77300, 79128, 79156, 80372, 80488, 80512, 80708, 81228, 81788, 104620, 120420, 124168, 124676, 158692]
-// Max: 158692 , Min: 16212 , Median: 60840 , Average: 63201
-
-// [1.175, 0.04, 0.8, 0.3, 0.4, 4, 3.5, 0, 1, 0.8]
-// [16100, 16148, 25668, 27108, 27576, 29872, 31700, 31800, 32032, 32228, 32252, 32632, 32792, 33676, 34144, 35976, 36504, 37032, 37180, 37232, 37236, 37260, 38016, 50756, 50920, 51400, 51640, 56476, 56668, 60376, 60696, 67808, 68000, 71236, 71516, 72352, 73032, 77320, 78812, 79692, 79712, 80348, 80480, 83956, 103980, 108460, 108928, 109248, 112928, 131040]
-// Max: 131040 , Min: 16100 , Median: 51400 , Average: 56598
-
-// [1.175, 0.04, 0.8, 0.3, 0.4, 3, 4, 0, 0.95, 0.875, 1]
-// Max: 124976 , Min: 2672 , Median: 35976 , Average: 40537
-
-// [1.175, 0.04, 0.8, 0.3, 0.4, 3.7, 4.3, 0, 0.95, 0.875, 1]
-// Max: 109392 , Min: 3204 , Median: 36172 , Average: 39641
-
-// [1.175, 0.04, 0.8, 0.3, 0.4, 4, 4, 0, 0.95, 0.875, 1]
-// Max: 132272 , Min: 2872 , Median: 35772 , Average: 40461
-
-// [1.175, 0.04, 0.8, 0.3, 0.4, 4, 4.5, 0, 0.95, 0.875, 1]
-// Max: 157392 , Min: 3092 , Median: 36264 , Average: 41595
-
-// [1.175, 0.04, 0.8, 0.3, 0.4, 4, 4.5, 0, 0.9, 0.875, 1]
-// Max: 124916 , Min: 3896 , Median: 35828 , Average: 39425
-
-// [1.175, 0.045, 0.8, 0.3, 0.4, 4, 4.5, 0, 0.9, 0.875, 1]
-// Max: 143488 , Min: 3440 , Median: 35604 , Average: 39650
-
-// [1.175, 0.04, 0.8, 0.3, 0.4, 4, 4.7, 0, 0.95, 0.875, 1]
-// Max: 144692 , Min: 4604 , Median: 36288 , Average: 42252
-
-// [1.175, 0.04, 0.8, 0.3, 0.4, 4, 5, 0, 0.95, 0.875, 1]
-// Max: 132884 , Min: 4220 , Median: 36160 , Average: 40735
-
-// [1.175, 0.04, 0.8, 0.3, 0.4, 5, 6, 0, 0.95, 0.875, 1]
-// Max: 129812 , Min: 5436 , Median: 36096 , Average: 40028
-
-// [1.175, 0.04, 0.8, 0.3, 0.4, 3.7, 4.3, 0, 0.9, 0.875, 1]
-// Max: 118208 , Min: 3116 , Median: 35524 , Average: 40348
-
-// [1.175, 0.04, 0.8, 0.3, 0.4, 3.7, 4.3, 0, 1, 0.875, 1]
-// Max: 133084 , Min: 2904 , Median: 35176 , Average: 39190
-
-// [1.175, 0.04, 0.8, 0.3, 0.4, 4, 4.5, 0, 0.9, 0.875, 3]
-// Max: 173240 , Min: 14732 , Median: 71768 , Average: 72753
