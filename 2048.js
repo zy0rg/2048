@@ -504,7 +504,7 @@ if (typeof GameManager !== "undefined") {
 				});
 			}
 
-			setTimeout(move, 20);
+			move();
 
 			return result;
 		};
