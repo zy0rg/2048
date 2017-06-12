@@ -486,7 +486,7 @@ if (typeof GameManager !== "undefined") {
 				clearTimeout(timeout);
 			}
 			function move() {
-				solver(parseCells(game.grid.cells), 5).then(function (result) {
+				solver(parseCells(game.grid.cells), 4).then(function (result) {
 					game.move((result.direction + 3) % 4);
 
 					if (game.isGameTerminated()) {
