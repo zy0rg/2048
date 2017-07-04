@@ -1,4 +1,6 @@
-function createSolver(window) {
+function createSolver(self) {
+	'use strict';
+
 	var field = new Uint8Array(16),
 		score = 0,
 		lost = false,
@@ -47,10 +49,6 @@ function createSolver(window) {
 		} else {
 			return constants[7];
 		}
-	}
-
-	function output(data) {
-		body.innerHTML = data;
 	}
 
 	function log() {
@@ -416,14 +414,12 @@ function createSolver(window) {
 	}
 
 	calculate.inverse = inverse;
-	calculate.values = values;
-	calculate.evaluate = evaluate;
 	calculate.start = function () {
 		body = document.getElementsByTagName('body')[0];
-		window.addEventListener('keydown', keydown);
+		self.addEventListener('keydown', keydown);
 	};
 
-	this.onmessage = function (message) {
+	self.onmessage = function (message) {
 		var data = message.data;
 		if (data.operation === 'findBestMove') {
 			this.postMessage({
@@ -442,7 +438,7 @@ function createSolver(window) {
 }
 
 function createWorker() {
-	var url = URL.createObjectURL(new Blob(['(' + createSolver.toString() + ')()'], {type: 'application/javascript'})),
+	var url = URL.createObjectURL(new Blob(['(' + createSolver.toString() + ')(this)'], {type: 'application/javascript'})),
 		worker = new Worker(url),
 		handler;
 
@@ -463,7 +459,7 @@ var solver = createSolver(window);
 if (typeof GameManager !== "undefined") {
 	(function (GameManager) {
 		var initialSetup = GameManager.prototype.setup,
-			timeout;
+			moving = false;
 
 		function parseCells(cells) {
 			var field = new Uint8Array(16),
@@ -482,15 +478,14 @@ if (typeof GameManager !== "undefined") {
 		GameManager.prototype.setup = function () {
 			var result = initialSetup.apply(this),
 				game = this;
-			if (timeout) {
-				clearTimeout(timeout);
-			}
+
 			function move() {
 				solver(parseCells(game.grid.cells), 4).then(function (result) {
 					game.move((result.direction + 3) % 4);
 
 					if (game.isGameTerminated()) {
 						if (game.over) {
+							moving = false;
 							return;
 						} else if (game.won) {
 							game.keepPlaying = true;
@@ -504,7 +499,10 @@ if (typeof GameManager !== "undefined") {
 				});
 			}
 
-			move();
+			if (!moving) {
+				moving = true;
+				move();
+			}
 
 			return result;
 		};
