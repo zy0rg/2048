@@ -15,10 +15,11 @@ function createSolver() {
 		1, 2, 0, 3 // yellow - orange, green, red, blue
 	]];
 
-	const moves = buildMoves();
+	const moveCoordinates = buildMoveCoordinates();
 	const max = evaluate(createCube());
+	const moves = buildMoves();
 
-	function buildMoves() {
+	function buildMoveCoordinates() {
 		const moves = new Uint8Array(160); // 5 cells, 4 offsets, 6 sides
 
 		for (let side = 0; side < 6; side++) {
@@ -41,11 +42,52 @@ function createSolver() {
 					offset = neighbour * 8 + oppositeNeighbourIndex * 2;
 				moves[moveOffset + 11 - neighbourIndex] = offset;
 				moves[moveOffset + 15 - neighbourIndex] = offset + 1;
-				moves[moveOffset + 19 - neighbourIndex] = offset + (oppositeNeighbourIndex == 3 ? -6 : 2);
+				moves[moveOffset + 19 - neighbourIndex] = offset + (oppositeNeighbourIndex === 3 ? -6 : 2);
 			}
 		}
 
 		return moves;
+	}
+
+	function buildMoves() {
+		const result = [];
+		for (let side = 0; side < 6; side++) {
+			const moveOffset = side * 20;
+			let i, offset,
+				ids = [];
+
+			for (i = 0; i < 5; i++) {
+				offset = moveOffset + i * 4;
+				ids.push(
+					moveCoordinates[offset],
+					moveCoordinates[offset + 1],
+					moveCoordinates[offset + 2],
+					moveCoordinates[offset + 3]
+				);
+			}
+
+			result.push(buildMove(ids), buildMove(ids.reverse()));
+		}
+		return result;
+	}
+
+	function buildMove(ids) {
+		const result = ['let a;return (c)=>{'];
+		let offset,
+			a, b, c, d;
+
+		for (let i = 0, len = ids.length / 4; i < len; i++) {
+			offset = i * 4;
+			a = ids[offset];
+			b = ids[offset + 1];
+			c = ids[offset + 2];
+			d = ids[offset + 3];
+			result.push(`a=c[${a}];c[${a}]=c[${b}];c[${b}]=c[${c}];c[${c}]=c[${d}];c[${d}]=a;`);
+		}
+
+		result.push('};');
+
+		return new Function(result.join(''))();
 	}
 
 	function createCube() {
@@ -65,19 +107,19 @@ function createSolver() {
 		if (clockwise) {
 			for (i = 0; i < 5; i++) {
 				offset = moveOffset + i * 4;
-				a = moves[offset];
-				b = moves[offset + 1];
-				c = moves[offset + 2];
-				d = moves[offset + 3];
+				a = moveCoordinates[offset];
+				b = moveCoordinates[offset + 1];
+				c = moveCoordinates[offset + 2];
+				d = moveCoordinates[offset + 3];
 				[cube[a], cube[b], cube[c], cube[d]] = [cube[b], cube[c], cube[d], cube[a]];
 			}
 		} else {
 			for (i = 0; i < 5; i++) {
 				offset = moveOffset + i * 4;
-				a = moves[offset + 3];
-				b = moves[offset + 2];
-				c = moves[offset + 1];
-				d = moves[offset];
+				a = moveCoordinates[offset + 3];
+				b = moveCoordinates[offset + 2];
+				c = moveCoordinates[offset + 1];
+				d = moveCoordinates[offset];
 				[cube[a], cube[b], cube[c], cube[d]] = [cube[b], cube[c], cube[d], cube[a]];
 			}
 		}
@@ -92,72 +134,93 @@ function createSolver() {
 		}
 	}
 
-	function findBestMove(cube, depth, cache) {
-		let score = evaluate(cube);
+	function createMoveFinder(depth) {
+		const cube = new Uint8Array(48),
+			subFinder = depth > 1
+				? createMoveFinder(depth - 1)
+				: evaluate;
 
-		if (depth === 0 || score === max) {
-			return {score, depth};
-		}
+		let score,
+			i,
+			move,
+			resultDepth,
+			subScore,
+			subDepth,
+			id,
+			cache = {};
 
-		let i,
-			side,
-			clockwise,
-			resultDepth = depth,
-			tmpCube = cache[depth];
+		const result = (source) => {
+			score = evaluate(source);
+			id = source.join('');
 
-		for (i = 0; i < 6; i++) {
-			tmpCube.set(cube);
-			move(tmpCube, i, true);
+			if (cache.hasOwnProperty(id)) {
+				[score, move, resultDepth] = cache[id];
+			} else {
+				resultDepth = depth;
 
-			let {score: currentScore, depth: currentDepth} = findBestMove(tmpCube, depth - 1, cache);
-			if (currentScore > score || (currentScore === score && currentDepth > resultDepth)) {
-				score = currentScore;
-				resultDepth = currentDepth;
-				side = i;
-				clockwise = true;
+				if (score === max) {
+					move = null;
+				} else {
+					for (i = 0; i < 12; i++) {
+						cube.set(source);
+						moves[i](cube);
+
+						subScore = subFinder(cube);
+						if (subScore > score) {
+							score = subScore;
+							resultDepth = subFinder.depth;
+							move = i;
+						} else if (subScore === score && (subDepth = subFinder.depth) > resultDepth) {
+							resultDepth = subDepth;
+							move = i;
+						}
+					}
+				}
 			}
-		}
 
-		for (i = 0; i < 6; i++) {
-			tmpCube.set(cube);
-			move(tmpCube, i, false);
+			result.depth = resultDepth;
+			result.move = move;
 
-			let {score: currentScore, depth: currentDepth} = findBestMove(tmpCube, depth - 1, cache);
-			if (currentScore > score || (currentScore === score && currentDepth > resultDepth)) {
-				score = currentScore;
-				resultDepth = currentDepth;
-				side = i;
-				clockwise = false;
+			cache[id] = [score, move, resultDepth];
+
+			return score;
+		};
+
+		result.depth = depth;
+		result.clearCache = () => {
+			cache = {};
+			if (depth > 1) {
+				subFinder.clearCache();
 			}
-		}
+		};
 
-		return {score, depth: resultDepth, side, clockwise};
+		return result;
 	}
 
 	function evaluate(cube) {
 		let value = 0;
-		if (cube[0] === 0 && cube[44] == 5 && cube[20] === 2) {
+		if (cube[0] === 0 && cube[44] === 5 && cube[20] === 2) {
 			value += 3;
 		}
-		if (cube[2] === 0 && cube[18] === 2 && cube[34] == 4) {
+		if (cube[2] === 0 && cube[18] === 2 && cube[34] === 4) {
 			value += 3;
 		}
-		if (cube[4] === 0 && cube[32] === 4 && cube[28] == 3) {
+		if (cube[4] === 0 && cube[32] === 4 && cube[28] === 3) {
 			value += 3;
 		}
-		if (cube[6] === 0 && cube[26] === 3 && cube[46] == 5) {
+		if (cube[6] === 0 && cube[26] === 3 && cube[46] === 5) {
 			value += 3;
 		}
-		if (cube[8] === 1 && cube[40] == 5 && cube[24] === 3) {
+		if (cube[8] === 1 && cube[40] === 5 && cube[24] === 3) {
 			value += 3;
 		}
-		if (cube[10] === 1 && cube[30] === 3 && cube[38] == 4) {
+		if (cube[10] === 1 && cube[30] === 3 && cube[38] === 4) {
 			value += 3;
 		}
-		if (cube[12] === 1 && cube[36] === 4 && cube[16] == 2) {
+		if (cube[12] === 1 && cube[36] === 4 && cube[16] === 2) {
 			value += 3;
 		}
-		if (cube[14] === 1 && cube[22] === 2 && cube[42] == 5) {
+		if (cube[14] === 1 && cube[22] === 2 && cube[42] === 5) {
 			value += 3;
 		}
 		if (cube[1] === 0 && cube[19] === 2) {
@@ -199,49 +262,30 @@ function createSolver() {
 		return value;
 	}
 
-	function evaluateOld(cube) {
-		let value = 0,
-			side, i, cell;
+	evaluate.depth = 0;
 
-		for (side = 0, cell = 0; side < 6; side++) {
-			for (i = 0; i < 8; i++, cell++) {
-				if (cube[cell] == side) {
-					value++;
-				}
-			}
-		}
-
-		return value;
-	}
-
-	function createCache(depth) {
-		const cache = [];
-
-		for (let i = 0; i <= depth; i++) {
-			cache[i] = new Uint8Array(48);
-		}
-
-		return cache;
-	}
+	const finders = [];
 
 	return (shuffleDepth, depth = shuffleDepth) => {
 		const cube = createCube(),
-			cache = createCache(depth);
+			finder = finders[depth] || (finders[depth] = createMoveFinder(depth));
 		console.log('shuffling');
 		shuffle(cube, shuffleDepth);
 		console.log('solving');
 
 		function iterate() {
 			let start = new Date().getTime(),
-				result = findBestMove(cube, depth, cache),
-				side = result.side, clockwise;
-			if (side != null) {
-				clockwise = result.clockwise;
+				i, side, clockwise;
+			finder(cube);
+			i = finder.move;
+			if (i != null) {
+				clockwise = i % 2 === 0;
+				side = Math.floor(i / 2);
 				move(cube, side, clockwise);
-				console.log(side, clockwise, evaluate(cube), new Date().getTime() - side, new Date().getTime() - start);
-				setTimeout(iterate, 0);
+				console.log(side, clockwise, evaluate(cube), new Date().getTime() - start);
+				setTimeout(iterate, 100);
 			} else {
-				console.log('solved', cube, result);
+				console.log('solved', cube);
 			}
 		}
 

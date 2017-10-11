@@ -96,7 +96,7 @@ function createSolver(self) {
 
 	function equal(field1, field2) {
 		for (var i = 0; i < 16; i++) {
-			if (field1[i] != field2[i]) {
+			if (field1[i] !== field2[i]) {
 				return false;
 			}
 		}
